@@ -171,3 +171,110 @@ func NewVideoDecoder(name string) (dec *VideoDecoder, err error) {
 	dec = _dec
 	return
 }
+
+type VideoEncoder struct {
+	ff        *ffctx
+	Bitrate   int
+	Width     int
+	Height    int
+	Gopsize   int
+	Framesize int
+}
+
+func (self *VideoEncoder) SetBitrate(bitrate int) (err error) {
+	self.Bitrate = bitrate
+	return
+}
+
+func (self *VideoEncoder) SetOption(key string, val interface{}) (err error) {
+	ff := &self.ff.ff
+
+	sval := fmt.Sprint(val)
+	if key == "profile" {
+		ff.profile = C.avcodec_profile_name_to_int(ff.codec, C.CString(sval))
+		if ff.profile == C.FF_PROFILE_UNKNOWN {
+			err = fmt.Errorf("ffmpeg: profile `%s` invalid", sval)
+			return
+		}
+		return
+	}
+
+	C.av_dict_set(&ff.options, C.CString(key), C.CString(sval), 0)
+	return
+}
+
+func (self *VideoEncoder) GetOption(key string, val interface{}) (err error) {
+	ff := &self.ff.ff
+	entry := C.av_dict_get(ff.options, C.CString(key), nil, 0)
+	if entry == nil {
+		err = fmt.Errorf("ffmpeg: GetOption failed: `%s` not exists", key)
+		return
+	}
+	switch p := val.(type) {
+	case *string:
+		*p = C.GoString(entry.value)
+	case *int:
+		fmt.Sscanf(C.GoString(entry.value), "%d", p)
+	default:
+		err = fmt.Errorf("ffmpeg: GetOption failed: val must be *string or *int receiver")
+		return
+	}
+	return
+}
+
+func (self *VideoEncoder) Setup() (err error) {
+	ff := &self.ff.ff
+
+	ff.codecCtx.bit_rate = C.int64_t(self.Bitrate)
+
+	if C.avcodec_open2(ff.codecCtx, ff.codec, nil) != 0 {
+		err = fmt.Errorf("ffmpeg: encoder: avcodec_open2 failed")
+		return
+	}
+
+	ff.frame = C.av_frame_alloc()
+	return
+}
+
+func (self *VideoEncoder) Encode(frame *VideoFrame) (gotpkt bool,pkt []byte, err error) {
+
+	ff := &self.ff.ff
+
+	cpkt := C.AVPacket{}
+	cgotpkt := C.int(0)
+
+	//todo  assign go's frame to c's frame
+
+	cerr := C.avcodec_encode_video2(ff.codecCtx, &cpkt, ff.frame, &cgotpkt)
+	if cerr < C.int(0) {
+		err = fmt.Errorf("ffmpeg: avcodec_encode_video2 failed: %d", cerr)
+		return
+	}
+
+	if cgotpkt != 0  {
+		gotpkt = true
+		pkt = C.GoBytes(unsafe.Pointer(cpkt.data), cpkt.size)
+		C.av_packet_unref(&cpkt)
+	}
+	return
+}
+
+
+func (self *VideoEncoder) Close() {
+	freeFFCtx(self.ff)
+}
+
+func NewVideoEncoder(name string) (enc *VideoEncoder, err error) {
+	_enc := &VideoEncoder{}
+	codec := C.avcodec_find_encoder_by_name(C.CString(name))
+	if codec == nil || C.avcodec_get_type(codec.id) != C.AVMEDIA_TYPE_VIDEO {
+		err = fmt.Errorf("ffmpeg: cannot find video encoder name=%s", name)
+		return
+	}
+
+	if _enc.ff, err = newFFCtxByCodec(codec); err != nil {
+		return
+	}
+	enc = _enc
+	return
+}
