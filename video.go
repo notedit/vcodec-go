@@ -257,13 +257,16 @@ func (self *VideoEncoder) Setup() (err error) {
 	ff.codecCtx.pix_fmt = C.AV_PIX_FMT_YUV420P
 	ff.codecCtx.gop_size = C.int(self.Gopsize)
 
+	ff.codecCtx.time_base.num = 1
+	ff.codecCtx.time_base.den = C.int(self.Framerate)
+
 	if C.avcodec_open2(ff.codecCtx, ff.codec, nil) != 0 {
 		err = fmt.Errorf("ffmpeg: encoder: avcodec_open2 failed")
 		return
 	}
 
 	ff.frame = C.av_frame_alloc()
-	
+
 	if C.av_image_alloc(&ff.frame.data[0], &ff.frame.linesize[0], ff.codecCtx.width, ff.codecCtx.height, ff.codecCtx.pix_fmt, 32) != 0 {
 		err = fmt.Errorf("ffmpeg: av_image_alloc failed")
 		return
