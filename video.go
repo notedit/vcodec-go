@@ -6,6 +6,7 @@ package vcodec
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
+#include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 #include <libavutil/opt.h>
 #include <string.h>
@@ -17,6 +18,7 @@ typedef struct {
 	AVDictionary *options;
 	int profile;
 } FFCtx;
+
 
 static inline int avcodec_profile_name_to_int(AVCodec *codec, const char *name) {
 	const AVProfile *p;
@@ -78,8 +80,11 @@ func freeFFCtx(self *ffctx) {
 }
 
 type VideoFrame struct {
-	Image image.YCbCr
-	frame *C.AVFrame
+	Image  image.YCbCr
+	Width  int
+	Height int
+	Data   [][]byte
+	frame  *C.AVFrame
 }
 
 func (self *VideoFrame) Free() {
@@ -178,11 +183,31 @@ type VideoEncoder struct {
 	Width     int
 	Height    int
 	Gopsize   int
-	Framesize int
+	Framerate int
 }
 
 func (self *VideoEncoder) SetBitrate(bitrate int) (err error) {
 	self.Bitrate = bitrate
+	return
+}
+
+func (self *VideoEncoder) SetHeight(height int) (err error) {
+	self.Height = height
+	return
+}
+
+func (self *VideoEncoder) SetWidth(width int) (err error) {
+	self.Width = width
+	return
+}
+
+func (self *VideoEncoder) SetGopsize(gop int) (err error) {
+	self.Gopsize = gop
+	return
+}
+
+func (self *VideoEncoder) SetFramerate(framerate int) (err error) {
+	self.Framerate = framerate
 	return
 }
 
@@ -226,6 +251,11 @@ func (self *VideoEncoder) Setup() (err error) {
 	ff := &self.ff.ff
 
 	ff.codecCtx.bit_rate = C.int64_t(self.Bitrate)
+	ff.codecCtx.width = C.int(self.Width)
+	ff.codecCtx.height = C.int(self.Height)
+
+	ff.codecCtx.pix_fmt = C.AV_PIX_FMT_YUV420P
+	ff.codecCtx.gop_size = C.int(self.Gopsize)
 
 	if C.avcodec_open2(ff.codecCtx, ff.codec, nil) != 0 {
 		err = fmt.Errorf("ffmpeg: encoder: avcodec_open2 failed")
@@ -233,17 +263,23 @@ func (self *VideoEncoder) Setup() (err error) {
 	}
 
 	ff.frame = C.av_frame_alloc()
+	
+	if C.av_image_alloc(&ff.frame.data[0], &ff.frame.linesize[0], ff.codecCtx.width, ff.codecCtx.height, ff.codecCtx.pix_fmt, 32) != 0 {
+		err = fmt.Errorf("ffmpeg: av_image_alloc failed")
+		return
+	}
+
 	return
 }
 
-func (self *VideoEncoder) Encode(frame *VideoFrame) (gotpkt bool,pkt []byte, err error) {
+func (self *VideoEncoder) Encode(frame *VideoFrame) (gotpkt bool, pkt []byte, err error) {
 
 	ff := &self.ff.ff
 
 	cpkt := C.AVPacket{}
 	cgotpkt := C.int(0)
 
-	//todo  assign go's frame to c's frame
+	videoFrameAssignToFF(frame, ff.frame)
 
 	cerr := C.avcodec_encode_video2(ff.codecCtx, &cpkt, ff.frame, &cgotpkt)
 	if cerr < C.int(0) {
@@ -251,14 +287,13 @@ func (self *VideoEncoder) Encode(frame *VideoFrame) (gotpkt bool,pkt []byte, err
 		return
 	}
 
-	if cgotpkt != 0  {
+	if cgotpkt != 0 {
 		gotpkt = true
 		pkt = C.GoBytes(unsafe.Pointer(cpkt.data), cpkt.size)
 		C.av_packet_unref(&cpkt)
 	}
 	return
 }
-
 
 func (self *VideoEncoder) Close() {
 	freeFFCtx(self.ff)
@@ -277,4 +312,13 @@ func NewVideoEncoder(name string) (enc *VideoEncoder, err error) {
 	}
 	enc = _enc
 	return
+}
+
+func videoFrameAssignToFF(frame *VideoFrame, f *C.AVFrame) {
+	// Y
+	f.data[0] = (*C.uint8_t)(unsafe.Pointer(&frame.Image.Y[0]))
+	// U
+	f.data[1] = (*C.uint8_t)(unsafe.Pointer(&frame.Image.Cb[0]))
+	// V
+	f.data[2] = (*C.uint8_t)(unsafe.Pointer(&frame.Image.Cr[0]))
 }

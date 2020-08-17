@@ -4,9 +4,10 @@ import (
 	"fmt"
 
 	"github.com/notedit/gst"
+	"github.com/notedit/vcodec-go"
 )
 
-const gstVideoPipeline = "videotestsrc ! video/x-raw,framerate=15/1 ! x264enc aud=false bframes=0 speed-preset=veryfast key-int-max=30 ! video/x-h264,stream-format=avc,profile=baseline ! h264parse ! appsink name=videosink "
+const gstVideoPipeline = "videotestsrc ! video/x-raw,framerate=15/1 ! x264enc aud=false bframes=0 speed-preset=veryfast key-int-max=30 ! video/x-h264,stream-format=byte-stream,profile=baseline ! h264parse ! appsink name=videosink "
 
 type Sample struct {
 	Data     []byte
@@ -41,11 +42,15 @@ func pullVideoSample(element *gst.Element, out chan *Sample) {
 
 func main() {
 
+	decoder, err := vcodec.NewVideoDecoder("h264")
+
+	if err != nil {
+		panic(err)
+	}
+
 	samples := make(chan *Sample, 10)
 
-	err := gst.CheckPlugins([]string{"x264", "videoparsersbad"})
-
-	fmt.Println("AAAA")
+	err = gst.CheckPlugins([]string{"x264", "videoparsersbad"})
 
 	if err != nil {
 		panic(err)
@@ -63,6 +68,11 @@ func main() {
 	go pullVideoSample(velement, samples)
 
 	for sample := range samples {
-		fmt.Println("duration ", sample.Duration)
+		frame, err := decoder.Decode(sample.Data)
+		if err != nil {
+			fmt.Println(err)
+		}
+		fmt.Println("decode frame", frame.Image.Bounds())
+
 	}
 }

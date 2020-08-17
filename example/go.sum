@@ -1,2 +1,4 @@
 github.com/notedit/gst v0.0.5 h1:gnQn0T1IeQQ3oEIToQIwAgErO2TBHT00A9TsI13/ly4=
 github.com/notedit/gst v0.0.5/go.mod h1:99yZ0oIrCg0xd2a1rn/1cjcUAHLAGTDxXLD1FQ5NpoM=
+github.com/notedit/vcodec-go v0.0.0-20200814081118-6ac0136b71a6 h1:Kbl55duv+m0a5BFvNDKn1Xt04fJgVHgCERXgd7Yda2A=
+github.com/notedit/vcodec-go v0.0.0-20200814081118-6ac0136b71a6/go.mod h1:niXuB5llIu2I4hwGu6UNoaxwU5/FYWVxnSEs/X2rNqg=
