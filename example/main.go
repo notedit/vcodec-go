@@ -62,7 +62,14 @@ func main() {
 	encoder.SetHeight(240)
 	encoder.SetWidth(320)
 
+	encoder.SetOption("preset", "medium")
+	encoder.SetOption("tune", "zerolatency")
+	encoder.SetOption("profile", "baseline")
+	encoder.SetOption("level", "3.0")
+
 	encoder.Setup()
+
+
 
 	samples := make(chan *Sample, 10)
 
@@ -92,11 +99,14 @@ func main() {
 
 		fmt.Println("decode frame", frame.Image.Bounds())
 
-		_, pkt, err := encoder.Encode(frame)
+		got, pkt, err := encoder.Encode(frame)
 		if err != nil {
 			panic(err)
 		}
 
+		if !got {
+			continue
+		}
 		fmt.Println(len(pkt))
 	}
 }

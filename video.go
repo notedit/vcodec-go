@@ -215,15 +215,6 @@ func (self *VideoEncoder) SetOption(key string, val interface{}) (err error) {
 	ff := &self.ff.ff
 
 	sval := fmt.Sprint(val)
-	if key == "profile" {
-		ff.profile = C.avcodec_profile_name_to_int(ff.codec, C.CString(sval))
-		if ff.profile == C.FF_PROFILE_UNKNOWN {
-			err = fmt.Errorf("ffmpeg: profile `%s` invalid", sval)
-			return
-		}
-		return
-	}
-
 	C.av_dict_set(&ff.options, C.CString(key), C.CString(sval), 0)
 	return
 }
@@ -260,7 +251,7 @@ func (self *VideoEncoder) Setup() (err error) {
 	ff.codecCtx.time_base.num = 1
 	ff.codecCtx.time_base.den = C.int(self.Framerate)
 
-	if C.avcodec_open2(ff.codecCtx, ff.codec, nil) != 0 {
+	if C.avcodec_open2(ff.codecCtx, ff.codec, &ff.options) != 0 {
 		err = fmt.Errorf("ffmpeg: encoder: avcodec_open2 failed")
 		return
 	}
@@ -318,6 +309,11 @@ func NewVideoEncoder(name string) (enc *VideoEncoder, err error) {
 }
 
 func videoFrameAssignToFF(frame *VideoFrame, f *C.AVFrame) {
+
+	f.width = C.int(frame.Image.Bounds().Size().X)
+	f.height = C.int(frame.Image.Bounds().Size().Y)
+	f.format = C.AV_PIX_FMT_YUV420P
+
 	// Y
 	f.data[0] = (*C.uint8_t)(unsafe.Pointer(&frame.Image.Y[0]))
 	// U
