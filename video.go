@@ -41,7 +41,6 @@ int wrap_avcodec_decode_video2(AVCodecContext *ctx, AVFrame *frame, void *data, 
 import "C"
 import (
 	"fmt"
-	"image"
 	"reflect"
 	"runtime"
 	"unsafe"
@@ -80,7 +79,6 @@ func freeFFCtx(self *ffctx) {
 }
 
 type VideoFrame struct {
-	Image  image.YCbCr
 	Width  int
 	Height int
 	Data   [][]byte
@@ -88,7 +86,6 @@ type VideoFrame struct {
 }
 
 func (self *VideoFrame) Free() {
-	self.Image = image.YCbCr{}
 	C.av_frame_free(&self.frame)
 }
 
@@ -140,16 +137,15 @@ func (self *VideoDecoder) Decode(pkt []byte) (img *VideoFrame, err error) {
 		ys := int(frame.linesize[0])
 		cs := int(frame.linesize[1])
 
+		data := make([][]byte, 3)
+		data[0] = fromCPtr(unsafe.Pointer(frame.data[0]), ys*h)
+		data[1] = fromCPtr(unsafe.Pointer(frame.data[1]), cs*h/2)
+		data[2] = fromCPtr(unsafe.Pointer(frame.data[2]), cs*h/2)
+
 		img = &VideoFrame{
-			Image: image.YCbCr{
-				Y:              fromCPtr(unsafe.Pointer(frame.data[0]), ys*h),
-				Cb:             fromCPtr(unsafe.Pointer(frame.data[1]), cs*h/2),
-				Cr:             fromCPtr(unsafe.Pointer(frame.data[2]), cs*h/2),
-				YStride:        ys,
-				CStride:        cs,
-				SubsampleRatio: image.YCbCrSubsampleRatio420,
-				Rect:           image.Rect(0, 0, w, h),
-			},
+			Data:data,
+			Height: h,
+			Width: w,
 			frame: frame,
 		}
 		runtime.SetFinalizer(img, freeVideoFrame)
@@ -310,14 +306,14 @@ func NewVideoEncoder(name string) (enc *VideoEncoder, err error) {
 
 func videoFrameAssignToFF(frame *VideoFrame, f *C.AVFrame) {
 
-	f.width = C.int(frame.Image.Bounds().Size().X)
-	f.height = C.int(frame.Image.Bounds().Size().Y)
+	f.width = C.int(frame.Width)
+	f.height = C.int(frame.Height)
 	f.format = C.AV_PIX_FMT_YUV420P
 
 	// Y
-	f.data[0] = (*C.uint8_t)(unsafe.Pointer(&frame.Image.Y[0]))
+	f.data[0] = (*C.uint8_t)(unsafe.Pointer(&frame.Data[0][0]))
 	// U
-	f.data[1] = (*C.uint8_t)(unsafe.Pointer(&frame.Image.Cb[0]))
+	f.data[1] = (*C.uint8_t)(unsafe.Pointer(&frame.Data[1][0]))
 	// V
-	f.data[2] = (*C.uint8_t)(unsafe.Pointer(&frame.Image.Cr[0]))
+	f.data[2] = (*C.uint8_t)(unsafe.Pointer(&frame.Data[2][0]))
 }

@@ -70,7 +70,6 @@ func main() {
 	encoder.Setup()
 
 
-
 	samples := make(chan *Sample, 10)
 
 	err = gst.CheckPlugins([]string{"x264", "videoparsersbad"})
@@ -97,7 +96,7 @@ func main() {
 			fmt.Println(err)
 		}
 
-		fmt.Println("decode frame", frame.Image.Bounds())
+		fmt.Println("decode frame", frame.Width, frame.Height)
 
 		got, pkt, err := encoder.Encode(frame)
 		if err != nil {
