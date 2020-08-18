@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/notedit/gst"
@@ -69,7 +70,6 @@ func main() {
 
 	encoder.Setup()
 
-
 	samples := make(chan *Sample, 10)
 
 	err = gst.CheckPlugins([]string{"x264", "videoparsersbad"})
@@ -104,8 +104,13 @@ func main() {
 		}
 
 		if !got {
+			fmt.Println("does not got frame")
 			continue
 		}
 		fmt.Println(len(pkt))
+
+		if bytes.HasPrefix(pkt, []byte{0, 0, 0, 1}) {
+			fmt.Println("Annex b")
+		}
 	}
 }
