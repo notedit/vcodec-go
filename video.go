@@ -19,16 +19,7 @@ typedef struct {
 	int profile;
 } FFCtx;
 
-
-static inline int avcodec_profile_name_to_int(AVCodec *codec, const char *name) {
-	const AVProfile *p;
-	for (p = codec->profiles; p != NULL && p->profile != FF_PROFILE_UNKNOWN; p++)
-		if (!strcasecmp(p->name, name))
-			return p->profile;
-	return FF_PROFILE_UNKNOWN;
-}
-
-void ffinit() {
+void vffinit() {
 	av_register_all();
 }
 
@@ -47,7 +38,7 @@ import (
 )
 
 func init() {
-	C.ffinit()
+	C.vffinit()
 }
 
 type ffctx struct {
@@ -143,10 +134,10 @@ func (self *VideoDecoder) Decode(pkt []byte) (img *VideoFrame, err error) {
 		data[2] = fromCPtr(unsafe.Pointer(frame.data[2]), cs*h/2)
 
 		img = &VideoFrame{
-			Data:data,
+			Data:   data,
 			Height: h,
-			Width: w,
-			frame: frame,
+			Width:  w,
+			frame:  frame,
 		}
 		runtime.SetFinalizer(img, freeVideoFrame)
 	}
