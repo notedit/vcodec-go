@@ -72,7 +72,7 @@ func freeFFCtx(self *ffctx) {
 type VideoFrame struct {
 	Width  int
 	Height int
-	Data   [][]byte
+	Data   []byte
 	frame  *C.AVFrame
 }
 
@@ -123,20 +123,33 @@ func (self *VideoDecoder) Decode(pkt []byte) (img *VideoFrame, err error) {
 	}
 
 	if cgotimg != C.int(0) {
-		w := int(frame.width)
-		h := int(frame.height)
-		ys := int(frame.linesize[0])
-		cs := int(frame.linesize[1])
+		width := int(frame.width)
+		height := int(frame.height)
 
-		data := make([][]byte, 3)
-		data[0] = fromCPtr(unsafe.Pointer(frame.data[0]), ys*h)
-		data[1] = fromCPtr(unsafe.Pointer(frame.data[1]), cs*h/2)
-		data[2] = fromCPtr(unsafe.Pointer(frame.data[2]), cs*h/2)
+		stride_y := int(frame.linesize[0])
+		stride_u := int(frame.linesize[1])
+		stride_v := int(frame.linesize[2])
+
+		data := make([]byte,width * height * 3 / 2)
+
+		nYUVBufsize := 0
+		nVOffset := 0
+
+		for i := 0; i < height; i++ {
+			copy(data[nYUVBufsize:],fromCPtr(unsafe.Pointer(uintptr(unsafe.Pointer(frame.data[0])) + uintptr(i * stride_y)), width))
+			nYUVBufsize += width
+		}
+		for i := 0; i < height / 2; i++ {
+			copy(data[nYUVBufsize:], fromCPtr(unsafe.Pointer(uintptr(unsafe.Pointer(frame.data[1])) + uintptr(i * stride_u)), width / 2))
+			nYUVBufsize += width / 2
+			copy(data[width * height * 5 / 4 + nVOffset:], fromCPtr(unsafe.Pointer(uintptr(unsafe.Pointer(frame.data[2])) + uintptr(i * stride_v)), width / 2))
+			nVOffset += width / 2
+		}
 
 		img = &VideoFrame{
 			Data:   data,
-			Height: h,
-			Width:  w,
+			Height: height,
+			Width:  width,
 			frame:  frame,
 		}
 		runtime.SetFinalizer(img, freeVideoFrame)
@@ -244,9 +257,9 @@ func (self *VideoEncoder) Setup() (err error) {
 	}
 
 	ff.frame = C.av_frame_alloc()
-
-	if C.av_image_alloc(&ff.frame.data[0], &ff.frame.linesize[0], ff.codecCtx.width, ff.codecCtx.height, ff.codecCtx.pix_fmt, 32) != 0 {
-		err = fmt.Errorf("ffmpeg: av_image_alloc failed")
+	cerr := C.av_image_alloc(&ff.frame.data[0], &ff.frame.linesize[0], ff.codecCtx.width, ff.codecCtx.height, ff.codecCtx.pix_fmt, 32)
+	if cerr < C.int(0) {
+		err = fmt.Errorf("ffmpeg: av_image_alloc failed: %d",cerr)
 		return
 	}
 
@@ -302,9 +315,13 @@ func videoFrameAssignToFF(frame *VideoFrame, f *C.AVFrame) {
 	f.format = C.AV_PIX_FMT_YUV420P
 
 	// Y
-	f.data[0] = (*C.uint8_t)(unsafe.Pointer(&frame.Data[0][0]))
+	f.data[0] = (*C.uint8_t)(unsafe.Pointer(&frame.Data[0]))
 	// U
-	f.data[1] = (*C.uint8_t)(unsafe.Pointer(&frame.Data[1][0]))
+	f.data[1] = (*C.uint8_t)(unsafe.Pointer(&frame.Data[frame.Width * frame.Height]))
 	// V
-	f.data[2] = (*C.uint8_t)(unsafe.Pointer(&frame.Data[2][0]))
+	f.data[2] = (*C.uint8_t)(unsafe.Pointer(&frame.Data[frame.Width * frame.Height * 5/4]))
+
+	f.linesize[0] = f.width
+	f.linesize[1] = f.width >> 1
+	f.linesize[2] = f.width >> 1
 }
